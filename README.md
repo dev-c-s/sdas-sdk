@@ -33,12 +33,12 @@ SDAS-SDK is an embeddable browser library for identity capture. Point a camera
 at an ID document and/or take a selfie: a small on-device neural network finds
 the document corners, live quality gates (glare, blur, tilt, perspective,
 distance, lighting, stability) coach the user in real time and gate the
-auto-capture, and the result — JPEG blobs plus a QC verdict and per-capture
-diagnostics — is handed back to your code.
+auto-capture, and the result — JPEG blobs plus a QC verdict — is handed back
+to your code.
 
 Both capture flows (document **and** selfie) ship inside this one library; the
 models ride in `sdas-models.pak` and load on demand. The repo is source-free
-by design — these are the shipped, integrity-protected artifacts.
+by design — these are the shipped, tamper-protected distribution artifacts.
 
 ---
 
@@ -154,7 +154,6 @@ handle the rejection.
 | `qualityChecks` | `boolean` | `true` | `false` skips the QC gates (a stable quad is still required for auto capture). |
 | `maxEdgePx` | `number` | `4096` | Long-edge clamp at accept, aspect preserved (JPEG 0.9). No re-encode under the limit. |
 | `cameraSelection` | `boolean` | `true` | Show the in-capture camera dropdown so the user can switch cameras. Set `false` for a locked-down UI (the automatic camera choice is unaffected). |
-| `report` | `boolean` | `false` | Shows the Report button in the capture UI. Leave off unless you intend the telemetry (see [Privacy](#privacy)). |
 
 > `capture-sdk/README.md` is the complete integrator manual — manual-capture
 > semantics, camera-permission behavior, i18n authoring, file layout and
@@ -168,46 +167,36 @@ handle the rejection.
 
 Auto-capture fires only when **every** gate holds. While a gate fails, the
 user sees a single, prioritized on-screen instruction; failing
-*environmental* checks (blur, glare, too close/far, too dark/bright) also
-appear as compact badges in the viewfinder, so co-failures stay visible
-instead of hiding behind the first-true instruction. All gates use
-enter/exit **hysteresis** so prompts never flicker at the threshold.
+*environmental* checks also appear as compact badges in the viewfinder. All
+gates use enter/exit **hysteresis** so prompts never flicker at the
+threshold.
 
 | Gate | What it verifies | Live coaching (verbatim UI text) |
 | --- | --- | --- |
-| Distance / minimum size | The document must fill an **adaptively derived** share of the frame: the capture floor targets ~1650 true camera pixels on the axis the card's long side aligns with, clamped between 62% and 85% fill, with a focus-zone cap (never pushes into the camera's minimum-focus distance), a comfort cap (never demands more than a natural handheld hold delivers) and a perpendicular budget (never leaves the card's short edge cut off). Proximity is measured orientation-aware — long-edge fill against the frame dimension the card aligns with, not raw frame area (raw area false-fires on portrait phones). | `MOVE CLOSER` / `MOVE BACK` |
-| Too close (defocus) | Browser cameras cannot focus at very close range (no manual-focus API), so an oversized, unsharp card is rejected rather than captured — judged from long-edge proximity plus sharp-edge width and micro-texture on the rectified card, with hysteresis. A **second, one-shot defocus check at higher resolution** runs at capture-confirm time, catching close-range blur the downscaled live loop physically cannot see. | `TOO CLOSE — MOVE FARTHER` |
-| Blur | Sharp-edge width and micro-texture analysis on the rectified card; sparse-text documents (thin rules, large blank bands) are calibrated separately from dense text. | `BLURRY — HOLD STILL` |
-| Glare | The rectified card is analyzed in three tiers: saturated white **clip cores**, near-neutral bright **sheen fringe**, and dense fully-clipped **hotspot** blobs (flagged far below the sheen limits, since a small dense white blob over the photo area is already damaging). Pale overexposed card bases do not count as glare. | `TILT AWAY FROM GLARE` |
-| Perspective / skew | Corner-angle deviation from 90° must stay within a hysteresis band tuned to natural in-hand capture (8–16° measured live; genuinely skewed locks ~27° are rejected). A second **opposite-edge foreshortening gate** catches single-axis pitch/yaw the corner-angle metric is near-blind to. | `FACE CARD HEAD-ON` |
-| Tilt (roll) | Card held level within 22°. | `HOLD IT LEVEL` |
-| Centering | Document position within the frame. | `CENTER THE CARD` |
-| Cut-off | No card corners clipped by the frame edge. | `MOVE CARD INTO VIEW` |
-| Aspect plausibility | Landscape cards must measure plausibly landscape, portrait plausibly portrait — so the corner detector locking onto a wrong surface fails instead of capturing. | (verdict gate) |
-| Lighting & plausibility | Dark / too-bright mean-luma gates, plus saturation/luma plausibility on gray-world-normalized channels (illumination-invariant) so dim or washed-out scenes never capture. | `TOO DARK — ADD LIGHT` / `TOO BRIGHT` |
-| Document presence | Model presence/peak plausibility — something card-like must actually be detected before any of the above are even evaluated. | `NO CARD DETECTED` |
+| Distance / minimum size | The document must fill an **adaptively derived** share of the frame — clamped between 62% and 85%, with comfort and focus caps so the user is never pushed past what a natural handheld hold delivers | `MOVE CLOSER` / `MOVE BACK` |
+| Too close (defocus) | Oversized, unsharp cards are rejected — browser cameras cannot focus at very close range. A second, higher-resolution defocus check runs at capture-confirm time | `TOO CLOSE — MOVE FARTHER` |
+| Blur | Edge sharpness on the rectified card | `BLURRY — HOLD STILL` |
+| Glare | Three-tier glare analysis of the rectified card (white clip cores, bright sheen, dense hotspots) | `TILT AWAY FROM GLARE` |
+| Perspective / skew | Corner-angle deviation from 90° plus an opposite-edge foreshortening check — tuned to accept natural in-hand capture, reject genuinely skewed locks | `FACE CARD HEAD-ON` |
+| Tilt (roll) | Card held level | `HOLD IT LEVEL` |
+| Centering | Document position within the frame | `CENTER THE CARD` |
+| Cut-off | Whole card inside the frame | `MOVE CARD INTO VIEW` |
+| Aspect plausibility | The card must measure plausibly for its orientation, so a wrong surface locked by the detector fails instead of capturing | (verdict gate) |
+| Lighting | Dark / too-bright scene checks | `TOO DARK — ADD LIGHT` / `TOO BRIGHT` |
+| Document presence | A card must actually be detected before the other gates evaluate | `NO CARD DETECTED` |
 
-**Corner stability.** A dedicated anti-flicker stack sits under the gates:
+**Corner stability** — per-corner adaptive smoothing, tie-hold coasting over
+ambiguous detections, re-acquisition confirmation and glitch bridging: the
+corner overlay never yanks between frames and the hold never restarts on a
+momentary decode glitch.
 
-- per-corner **One-Euro filtering** (speed-adaptive smoothing — kills jitter
-  at rest, keeps up in motion);
-- **plateau tie-hold**: when the detection heatmap has two nearly tied peaks
-  far apart, the corner position would yank between frames — the tracker
-  coasts on the last good reference instead of trusting the ambiguous frame;
-- **k-confirm re-acquisition** after any detection gap (consecutive
-  consistent quads required before re-locking);
-- **glitch bridging**: momentary quad-stage rejects don't restart the hold.
+**Progress-fill hold** — instead of a numeric countdown, the corner wireframe
+fills bright green while all gates hold, with graded drain-back on failure
+(single tremors don't zero the progress). A moved document is caught at
+review.
 
-**Capture hold.** Instead of a numeric countdown, the corner wireframe fills
-bright green bottom-up while all gates hold (`HOLD STILL — CAPTURING…`), with
-graded drain-back on failure and a brief flap-freeze so a single tremor
-doesn't zero the progress — an interruptible hold consistent with commercial
-scan SDKs. A moved document is caught at review (`DOCUMENT MOVED — HOLD
-STEADY AND TRY AGAIN`).
-
-**Thermal pacing.** On devices whose sustained inference time sags (phone SoC
-throttling), frames are paced so clocks recover between analysis rounds — the
-measured *sustained* analysis rate ends up higher than ungated.
+**Thermal pacing** — on throttling phone SoCs, frames are paced so clocks
+recover between analysis rounds, keeping the sustained analysis rate healthy.
 
 ### Selfie capture
 
@@ -216,46 +205,40 @@ the document model — no second engine, no extra download.
 
 | Gate | What it verifies | Live coaching (verbatim UI text) |
 | --- | --- | --- |
-| Face presence + centering | A face must be detected and centered; an on-screen **head-mask guide** frames the target, sized per viewfinder aspect so it reads correctly on phones and webcams alike. | `CENTER YOUR FACE` / `NO FACE DETECTED` |
-| Distance band | Face height must land between 0.63 and 0.85 of the mask guide. | `MOVE CLOSER` / `MOVE BACK` |
-| Pose | Yaw ≤10°, pitch ≤15°, roll ≤10° (linear proxies over the 6 landmarks, calibrated live). | `TURN HEAD STRAIGHT` / `LOOK STRAIGHT AT CAMERA` / `HOLD HEAD LEVEL` |
-| Blur | Scale-invariant edge-width on a fixed-size face crop. | `BLURRY — HOLD STILL` |
-| Lighting | Dark / too-bright mean-luma gates. | `TOO DARK — ADD LIGHT` / `TOO BRIGHT` |
-| Stability | Head must hold still before the capture fires. | `HOLD STILL` |
+| Face + centering | Face detected and centered inside an on-screen **head-mask guide** | `CENTER YOUR FACE` / `NO FACE DETECTED` |
+| Distance | Face height within the mask guide's band | `MOVE CLOSER` / `MOVE BACK` |
+| Pose | Yaw, pitch and roll within calibrated limits | `TURN HEAD STRAIGHT` / `LOOK STRAIGHT AT CAMERA` / `HOLD HEAD LEVEL` |
+| Blur | Scale-invariant sharpness check on the face crop | `BLURRY — HOLD STILL` |
+| Lighting | Dark / too-bright scene checks | `TOO DARK — ADD LIGHT` / `TOO BRIGHT` |
+| Stability | Head still before the capture fires | `HOLD STILL` |
 
 Output is **mirrored** to match the live preview (WYSIWYG).
 
 ### Runtime & integration features
 
-- **Fully on-device inference** — the models run in a worker; no server, no
-  API keys, no data leaving the page (see [Privacy](#privacy)).
-- **WebGPU acceleration with automatic fallback** — a WebGPU attempt is
-  verified by a warmup timing probe (3 timed warmup inferences); if the GPU
-  bridge is slow or absent, the runtime falls back through JSPI-enabled wasm
-  → relaxed-SIMD wasm → fixed-width-SIMD wasm. Only the variant the device
-  selects is ever downloaded (~9.6 MB wasm, ~2.5–3.5 MB brotli/gzip —
-  precompress if your host doesn't compress).
-- **Shadow-DOM isolation** — the capture UI mounts in its own shadow root;
-  host styles don't leak in and capture styles don't leak out. Fullscreen
-  overlay mode or embedded container mode.
-- **Warm camera stream** — switching between doc and selfie reuses the live
-  stream: same-camera switches never re-call `getUserMedia` and never
-  re-prompt. Front/rear switches may prompt once per platform behavior.
+- **Fully on-device inference** — models run in a worker; no server, no API
+  keys, nothing leaves the page.
+- **WebGPU with automatic fallback** — GPU acceleration is verified by a
+  warmup probe; otherwise the runtime steps down through wasm variants, and
+  only the selected variant is ever downloaded.
+- **Shadow-DOM isolation** — fullscreen overlay or embedded container mode;
+  styles sealed in both directions.
+- **Warm camera stream** — doc ↔ selfie switches reuse the live stream; no
+  re-prompts on same-camera switches.
 - **Camera selection** — optional in-capture dropdown; virtual camera devices
-  are filtered out automatically at every device enumeration.
+  are filtered out automatically.
 - **Manual capture** — timed or always-on shutter that bypasses the gates,
-  returning the QC verdict of the grabbed frame with the image.
-- **`maxEdgePx` output clamp** — long-edge downscale at accept, aspect
-  preserved, no double compression when the frame is already under the limit.
-- **i18n** — English and German built in, per-key string overrides, and
-  adding a language is one JSON section (no rebuild).
+  returning the frame's QC verdict with the image.
+- **`maxEdgePx` output clamp** — long-edge downscale at accept, no double
+  compression under the limit.
+- **i18n** — English and German built in, per-key string overrides; adding a
+  language is one JSON section, no rebuild.
 - **No server requirements** — no COOP/COEP headers, no special MIME config;
-  serve the folder like any static site.
-- **Integrity-pinned artifacts** — the shipped binaries are
-  integrity-protected; use them as distributed, without modification.
-- **Diagnostics for free** — every capture returns its QC `flags` object
-  (boolean gate verdicts + numeric diagnostics such as perspective/yaw/pitch/
-  tilt degrees), so you can build your own funnel analytics or support flow.
+  serve it like any static site.
+- **Tamper protection** — the shipped binaries are integrity-verified to
+  protect against tampering; use them as distributed, without modification.
+- **Diagnostics included** — every capture returns its QC `flags` object
+  (gate verdicts + degree measurements), ready for your own analytics.
 
 ---
 
@@ -274,22 +257,21 @@ Output is **mirrored** to match the live preview (WYSIWYG).
 
 ## Privacy
 
-The SDK is offline-capable and does not upload captures: `report` defaults to
-`false`, and the demo app in this repo ships with reporting disabled. When
-`report: true` is set, a Report button appears in the capture UI; pressing it
-POSTs the current camera frame plus device/diagnostic metadata to the
-`/idscan/report` support endpoint. Leave `report` disabled unless you and your
-users intend that telemetry.
+SDAS-SDK runs **fully on-device**. All inference happens in the browser, and
+each capture — image plus QC verdict — is returned directly to the calling
+page. Nothing is uploaded, stored or transmitted: apart from loading its own
+static assets from your page's origin, the SDK makes no network requests.
 
 ## License
 
 The repo contents are distributed under the **PolyForm Noncommercial License
 1.0.0** — free to use, study, modify and share for any **noncommercial**
-purpose; **commercial use requires a separate license from the author**
-(contact: <https://cansahin.net>).
+purpose. **Commercial use requires a separate license from the author** —
+contact via GitHub: [@dev-c-s](https://github.com/dev-c-s), or open an issue
+in this repository.
 
 ```
-Required Notice: Copyright 2026 cansahin.net (https://cansahin.net)
+Required Notice: Copyright 2026 dev-c-s (https://github.com/dev-c-s)
 ```
 
 The full license text is in [LICENSE](LICENSE).

@@ -13,7 +13,6 @@ single `SDAS.open()` call.
   const result = await SDAS.open({
     mode: "doc",              // "doc" | "selfie" | "doc+selfie"; omit for a selection pane
     lang: "en",               // "en" / "de"; unknown codes fall back to en
-    report: false,            // no Report button unless you opt in
   });
   // result.doc.image is a JPEG Blob
 </script>
@@ -33,7 +32,6 @@ single `SDAS.open()` call.
 | `qualityChecks` | `boolean` | `true` | `false` skips the QC gates (a stable quad is still required for auto capture). |
 | `maxEdgePx` | `number` | `4096` | Long-edge clamp at accept, aspect preserved (JPEG 0.9). The camera track requests 2560 max edge on Chromium browsers, 1920 on Firefox; iOS document streams use square-min constraints (≥1920 both axes — WebKit workaround, delivers the camera's best 4:3 mode) and selfie streams target a 1920×1920 ideal (incapable cameras silently deliver their native max — the negotiation is the capability probe; `?cap=N` overrides). The capture fill floor adapts per device: it targets ~1650px of true pixels on the axis the card aligns with, clamped to 62-85% fill and capped by a perpendicular cutOff budget, a 76% focus-zone cap and a 65% comfort cap (never pushes the user into the camera's min-focus distance). No re-encode under the limit. |
 | `cameraSelection` | boolean | `true` | Show the in-capture camera dropdown so the user can switch cameras. Set `false` for a locked-down UI (the automatic camera choice is unaffected). |
-| `report` | `boolean` | `false` | Shows the Report button in the capture UI. |
 
 `SDAS.open()` resolves when the user accepts. If the capture engine fails to
 initialize (or hangs), the promise REJECTS with an error carrying
@@ -144,16 +142,15 @@ A small SDAS-SDK wordmark is displayed at the bottom of the camera area
 (`opacity: 0.5`, non-interactive). It is bundled inside the pak as
 `/watermark.png`; the shipped watermark is the SDAS brand mark.
 Integrator-supplied watermarks are not part of this release. The shipped
-artifacts are integrity-protected — use them as distributed, without
-modification.
+artifacts are integrity-verified to protect against tampering — use them as
+distributed, without modification.
 
 ## Privacy
 
-The SDK is offline-capable and does not upload captures: `report` defaults to
-`false`. When `report: true` is set, a Report button appears in the capture UI;
-pressing it POSTs the current camera frame plus device/diagnostic metadata to
-the vendor's `/idscan/report` endpoint for support/QA. Leave `report` disabled
-unless you and your users intend that telemetry.
+The SDK runs fully on-device: all inference happens in the browser and each
+capture — image plus QC verdict — is returned directly to the calling page.
+Nothing is uploaded, stored or transmitted: apart from loading its own static
+assets from your page's origin, the SDK makes no network requests.
 ## Attribution
 
 This distribution includes compiled runtime components derived from LiteRT
