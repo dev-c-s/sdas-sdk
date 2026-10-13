@@ -267,8 +267,7 @@ static assets from your page's origin, the SDK makes no network requests.
 The repo contents are distributed under the **PolyForm Noncommercial License
 1.0.0** — free to use, study, modify and share for any **noncommercial**
 purpose. **Commercial use requires a separate license from the author** —
-contact via GitHub: [@dev-c-s](https://github.com/dev-c-s), or open an issue
-in this repository.
+contact: <licensing@cansahin.net>.
 
 ```
 Required Notice: Copyright 2026 dev-c-s (https://github.com/dev-c-s)
