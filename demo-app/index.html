@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>SDAS-SDK demo</title>
+    <link rel="icon" type="image/png" href="./logo.png" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: #0b1116; color: #dfe7ec;
+         font: 14px/1.45 system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; }
+  #bar { width: 100%; display: flex; align-items: center; justify-content: space-between;
+         gap: 10px 14px; padding: 8px 14px; border-bottom: 1px solid #1c2833; }
+  /* text logo lockup: SDAS wordmark with version beside it, tagline below.
+     In-flow flex column: the lockup is as wide as the wordmark (tagline lines
+     are shorter) and #bar's align-items:center centers the whole lockup in
+     the bar — which spans both stacked right-hand rows. */
+  .brand { display: flex; flex-direction: column; gap: 3px; }
+  .brand h1 { color: #2eff7b; font-size: 17px; font-weight: 800; letter-spacing: 2.5px;
+              line-height: 1; margin: 0; }
+  .brand span { font-size: 7px; font-weight: 600; letter-spacing: 0.5px; line-height: 1.35;
+                text-transform: uppercase; color: #66777f; white-space: nowrap; }
+  /* version rides the wordmark row (beside SDAS), tagline-sized, gray */
+  .brand .vrow { display: flex; align-items: baseline; gap: 7px; }
+  .brand .ver { font-size: 7px; font-weight: 600; letter-spacing: 0.5px; line-height: 1;
+                color: #6b7680; }
+  /* right column: Fullscreen+Lang on top, mode buttons below */
+  .side { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+  .opts { display: flex; gap: 10px; align-items: center; }
+  #controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+              justify-content: flex-end; }
+  button, select { background: #16202a; color: #dfe7ec; border: 1px solid #2a3a46; border-radius: 8px;
+                   padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  select { text-transform: uppercase; }
+  button.primary { background: #123f26; border-color: #2eff7b; color: #2eff7b; font-weight: 600; }
+  label { color: #8fa3ad; display: flex; gap: 5px; align-items: center; font-size: 13px; }
+  main { width: min(980px, 100%); padding: 14px 16px 24px; }
+  #embedSlot { height: 74vh; border: 1px dashed #2a3a46; border-radius: 12px; }
+  body.capturing { overflow: hidden; height: 100dvh; }
+  body.capturing main { flex: 1 1 auto; min-height: 0; width: min(980px, 100%); display: flex;
+                        padding: 8px 10px 0; }
+  body.capturing #embedSlot { flex: 1 1 auto; min-height: 0; height: auto; border-radius: 12px; }
+  #results { display: none; flex-direction: column; gap: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card { background: #101922; border: 1px solid #22303c; border-radius: 12px; padding: 16px;
+          display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; }
+  .card img { max-width: 100%; max-height: 220px; border-radius: 8px; background: #000; }
+  .card h3 { margin: 0; font-size: 15px; letter-spacing: 0.4px; }
+  .card .pass { color: #2eff7b; } .card .fail { color: #ff5f6b; } .card .manual { color: #ffc14d; }
+  .card .meta { color: #8fa3ad; font-size: 13px; }
+  .card .meta a { color: #2eff7b; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .chip { font-size: 10.5px; letter-spacing: 0.5px; padding: 3px 9px; border-radius: 999px;
+          border: 1px solid #234436; color: #2eff7b; background: rgba(46,255,123,0.08); }
+  .chip.bad { border-color: #5a2a30; color: #ff5f6b; background: rgba(255,95,107,0.08); }
+  .chip.info { border-color: #2a3a46; color: #8fa3ad; background: transparent; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <div class="brand"><div class="vrow"><h1>SDAS</h1><div class="ver" id="appver" aria-hidden="true"></div></div><span>Smart<br>Document &<br>Selfie SDK</span></div>
+    <div class="side">
+      <div class="opts">
+        <label title="Fullscreen"><input type="checkbox" id="fullscreen" /><span>Fullscreen</span></label>
+        <label>Lang <select id="lang"><option value="en">en</option><option value="de">de</option></select></label>
+      </div>
+      <div id="controls">
+        <button class="primary" data-mode="doc">Doc</button>
+        <button class="primary" data-mode="selfie">Selfie</button>
+        <button class="primary" data-mode="doc+selfie">Both</button>
+      </div>
+    </div>
+  </div>
+  <main>
+    <div id="results"></div>
+    <div id="embedSlot"></div>
+  </main>
+  <script src="../capture-sdk/sdas-sdk.js"></script>
+  <script>
+    const resultsEl = document.getElementById("results");
+    const slot = document.getElementById("embedSlot");
+
+    // version stamp under the SDAS wordmark: "V0.5" / "V0.5.1" (patch only when
+    // nonzero). No SDK or no stamp -> drop the line rather than show it empty.
+    (() => {
+      const el = document.getElementById("appver");
+      if (!el) return;
+      const v = window.SDAS?.version;
+      const m = typeof v === "string" && /^(\d+)\.(\d+)\.(\d+)$/.exec(v);
+      if (!m) { el.remove(); return; }
+      el.textContent = "V" + m[1] + "." + m[2] + (Number(m[3]) ? "." + m[3] : "");
+    })();
+
+    // Chrome iOS draws its bottom toolbar ON TOP of the layout viewport and
+    // every viewport API (innerHeight, visualViewport.height, dvh/svh) reports
+    // the STALE full height — the toolbar is browser chrome WebKit never
+    // subtracts (chromium 490150189). It cannot be measured, only reserved:
+    // CriOS in capturing mode loses a flat ~90px at the bottom. Safari (and
+    // every other iOS browser) reports the real visible height — untouched.
+    const vv = window.visualViewport;
+    const IS_CHROME_IOS = /\bCriOS\//.test(navigator.userAgent);
+    // Flat reserve for Chrome iOS's overlaying bottom toolbar — no viewport
+    // API sees it (chromium 490150189). Calibratable on-device: ?bar=N px.
+    const CHROME_IOS_BAR = Number(new URLSearchParams(location.search).get("bar") ?? 0);
+    function fitViewport() {
+      if (vv && document.body.classList.contains("capturing")) {
+        const h = Math.max(320, Math.round(vv.height) - (IS_CHROME_IOS ? CHROME_IOS_BAR : 0));
+        // minHeight MUST shrink too: the base stylesheet floors body at
+        // min-height:100vh, which silently overrides the inline height
+        document.body.style.height = h + "px";
+        document.body.style.minHeight = h + "px";
+      } else {
+        document.body.style.height = "";
+        document.body.style.minHeight = "";
+      }
+    }
+    if (vv) {
+      vv.addEventListener("resize", fitViewport);
+      vv.addEventListener("scroll", fitViewport);
+    }
+    // object URLs handed to <img>/<a download>: revoked on the next render so
+    // repeated captures don't leak blobs
+    let liveUrls = [];
+    function revokeLiveUrls() {
+      for (const u of liveUrls) URL.revokeObjectURL(u);
+      liveUrls = [];
+    }
+
+    function showResults(res) {
+      revokeLiveUrls();
+      slot.style.display = "none";
+      document.body.classList.remove("capturing");
+      document.body.style.height = "";
+      document.body.style.minHeight = "";
+      resultsEl.style.display = "flex";
+      resultsEl.innerHTML = "";
+      const kinds = ["doc", "selfie"].filter((k) => res[k]);
+      if (!kinds.length) { resultsEl.innerHTML = '<p style="color:#8fa3ad">No capture returned.</p>'; return; }
+      const grid = document.createElement("div");
+      grid.className = "grid";
+      for (const kind of kinds) {
+        const o = res[kind];
+        const card = document.createElement("div");
+        card.className = "card";
+        const url = URL.createObjectURL(o.image);
+        liveUrls.push(url);
+        const sz = o.image.size;
+        const sizeStr = sz >= 1048576 ? (sz / 1048576).toFixed(2) + " MB" : Math.round(sz / 1024) + " KB";
+        const verdict = o.manual ? '<span class="manual">MANUAL CAPTURE</span>'
+                      : o.ok ? '<span class="pass">QC PASS</span>' : '<span class="fail">QC FAIL</span>';
+        card.innerHTML =
+          "<h3>" + kind.toUpperCase() + " · " + verdict + "</h3>" +
+          '<img alt="' + kind + ' capture" />' +
+          '<div class="meta">' + o.width + " × " + o.height + " px · " + sizeStr + " · " +
+          '<a href="' + url + '" download="' + kind + '.jpg">download</a></div>' +
+          '<div class="chips"></div>';
+        card.querySelector("img").src = url;
+        const chips = card.querySelector(".chips");
+        const entries = Object.entries(o.flags ?? {}).filter(([, v]) => typeof v === "boolean");
+        for (const [k, v] of entries) {
+          const chip = document.createElement("span");
+          const isFail = (k === "stable") ? !v : v;
+          chip.className = "chip" + (isFail ? " bad" : "");
+          chip.textContent = (isFail ? "✗ " : "✓ ") + k.replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase();
+          chips.appendChild(chip);
+        }
+        // numeric diag chips: only angle-like metrics get the ° suffix
+        const ANGLE_KEYS = new Set(["perspDeg", "yawDeg", "pitchDeg", "rollDeg", "tiltDeg"]);
+        for (const [k, v] of Object.entries(o.flags ?? {})) {
+          if (typeof v === "number") {
+            const chip = document.createElement("span");
+            chip.className = "chip info";
+            chip.textContent = k.toUpperCase() + " " + (Math.round(v * 10) / 10) + (ANGLE_KEYS.has(k) ? "°" : "");
+            chips.appendChild(chip);
+          }
+        }
+        grid.appendChild(card);
+      }
+      resultsEl.appendChild(grid);
+    }
+
+    function showSlot() {
+      revokeLiveUrls();
+      resultsEl.style.display = "none";
+      resultsEl.innerHTML = "";
+      slot.style.display = "block";
+      document.body.classList.add("capturing");
+      fitViewport();
+    }
+
+    function showLaunchError(err) {
+      revokeLiveUrls();
+      document.body.classList.remove("capturing");
+      slot.style.display = "none";
+      resultsEl.style.display = "flex";
+      resultsEl.innerHTML = "";
+      const p = document.createElement("p");
+      p.style.cssText = "color:#ff5f6b;font-weight:600";
+      p.textContent = "Capture failed: " + (err && err.message ? err.message : String(err));
+      resultsEl.appendChild(p);
+    }
+
+    document.querySelectorAll("button[data-mode]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        showSlot();
+        try {
+          const fs = document.getElementById("fullscreen").checked;
+          const res = await SDAS.open({
+            mode: b.dataset.mode,
+            lang: document.getElementById("lang").value,
+            fullscreen: fs,
+            container: fs ? undefined : slot,
+            manual: fs ? false : 10,
+            report: false,
+          });
+          showResults(res);
+        } catch (e) {
+          // cancelled = this open was replaced by a newer one — not an error
+          if (e?.cancelled) { showSlot(); return; }
+          console.error(e);
+          showLaunchError(e);
+        }
+      })
+    );
+  </script>
+</body>
+</html>
