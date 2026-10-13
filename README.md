@@ -2,11 +2,12 @@
 
 <img src="demo-app/logo.png" alt="SDAS-SDK — Smart Document And Selfie SDK" width="240">
 
-### Embeddable, fully on-device document + selfie capture for the web
+### Embeddable, WebGPU-accelerated document + selfie capture for the web
 
-One `<script>` tag and one `SDAS.open()` call. A neural network finds the
-document corners, live quality gates coach the user, and you receive JPEG
-blobs plus QC verdicts — all computed client-side, nothing uploaded.
+One `<script>` tag and one `SDAS.open()` call. A purpose-built CNN — trained
+from the ground up for identity capture — finds the document corners, live
+quality gates coach the user, and you receive JPEG blobs plus QC verdicts.
+All computed client-side, nothing uploaded.
 
 [Live demo](https://id.cansahin.net) &nbsp;·&nbsp; [Quickstart](#integration-in-60-seconds) &nbsp;·&nbsp; [Quality gates](#document-capture--live-quality-gates) &nbsp;·&nbsp; [License](#license)
 
@@ -30,7 +31,7 @@ blobs plus QC verdicts — all computed client-side, nothing uploaded.
 > point your camera at any ID card, or switch to Selfie mode.
 
 SDAS-SDK is an embeddable browser library for identity capture. Point a camera
-at an ID document and/or take a selfie: a small on-device neural network finds
+at an ID document and/or take a selfie: a purpose-built on-device CNN finds
 the document corners, live quality gates (glare, blur, tilt, perspective,
 distance, lighting, stability) coach the user in real time and gate the
 auto-capture, and the result — JPEG blobs plus a QC verdict — is handed back
