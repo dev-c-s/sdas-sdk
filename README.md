@@ -16,12 +16,12 @@ blobs plus QC verdicts — all computed client-side, nothing uploaded.
 ![browsers](https://img.shields.io/badge/browsers-Chrome_·_Edge_·_Firefox_·_Safari-2a3a46?style=flat-square&labelColor=101922)
 
 <p>
-  <img src="docs/screenshots/doc-capture.png" alt="Document capture with live corner detection and quality overlay" width="45%">
+  <img src="docs/screenshots/doc-capture.jpg" alt="Document capture with live corner detection and quality overlay" width="45%">
   &nbsp;
-  <img src="docs/screenshots/selfie-capture.png" alt="Selfie capture with head-mask guide and keypoint overlay" width="45%">
+  <img src="docs/screenshots/selfie-capture.jpg" alt="Selfie capture with head-mask guide and keypoint overlay" width="45%">
 </p>
 <p>
-  <img src="docs/screenshots/results-view.png" alt="Demo results view with QC verdict chips" width="60%">
+  <img src="docs/screenshots/results-view.jpg" alt="Demo results view with QC verdict chips" width="60%">
 </p>
 
 </div>
